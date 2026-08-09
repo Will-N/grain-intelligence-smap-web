@@ -1,0 +1,2122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>USDA SMAP Soil Moisture Monitor</title>
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #222;
+      background: #f4f5f7;
+      overflow: hidden;
+    }
+
+    header {
+      background: #17212b;
+      color: white;
+      padding: 10px 14px;
+      height: 64px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    header .subtitle {
+      margin-top: 3px;
+      color: #d7dde3;
+      font-size: 13px;
+    }
+
+    #controls {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      align-items: end;
+      padding: 8px 10px;
+      height: 66px;
+      background: white;
+      border-bottom: 1px solid #ccc;
+    }
+
+    .control {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .control label {
+      font-size: 11px;
+      font-weight: bold;
+      color: #444;
+    }
+
+    select {
+      padding: 5px 8px;
+      font-size: 13px;
+      min-width: 110px;
+    }
+
+    #layout {
+      display: grid;
+      grid-template-columns: 59% 41%;
+      height: calc(100vh - 130px);
+      min-height: 0;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      background: white;
+    }
+
+    #panel {
+      background: white;
+      border-left: 1px solid #ccc;
+      padding: 12px;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    #county-title {
+      margin: 0;
+      font-size: 21px;
+    }
+
+    #county-subtitle {
+      margin-top: 3px;
+      color: #666;
+      font-size: 13px;
+    }
+
+    #summary {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .summary-card {
+      border: 1px solid #ddd;
+      background: #fafafa;
+      border-radius: 5px;
+      padding: 8px;
+    }
+
+    .summary-label {
+      color: #666;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    .summary-value {
+      margin-top: 2px;
+      font-size: 19px;
+      font-weight: bold;
+    }
+
+    #chart-controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #ddd;
+    }
+
+    #chart-container {
+      position: relative;
+      height: calc(100vh - 430px);
+      min-height: 260px;
+      max-height: 390px;
+      margin-top: 8px;
+    }
+
+    #legend {
+      background: rgba(255,255,255,0.95);
+      padding: 8px 10px;
+      border-radius: 5px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.25);
+      font-size: 11px;
+      line-height: 17px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-box {
+      width: 16px;
+      height: 11px;
+      border: 1px solid #888;
+    }
+
+    @media (max-width: 1000px) {
+      html,
+      body {
+        overflow: auto;
+      }
+
+      #layout {
+        display: block;
+        height: auto;
+      }
+
+      #map {
+        height: 520px;
+      }
+
+      #panel {
+        border-left: 0;
+        border-top: 1px solid #ccc;
+      }
+
+      #chart-container {
+        height: 360px;
+        max-height: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>USDA SMAP Soil Moisture Monitor</h1>
+
+  <div class="subtitle">
+    Weekly 9-km soil moisture historical context • 2015–2025 baseline
+  </div>
+</header>
+
+<div id="controls">
+
+  <div class="control">
+    <label for="year-select">Year</label>
+    <select id="year-select">
+      <option value="2026">2026</option>
+    </select>
+  </div>
+
+  <div class="control">
+    <label for="week-select">Week</label>
+    <select id="week-select"></select>
+  </div>
+
+  <div class="control">
+    <label for="depth-select">Depth</label>
+
+    <select id="depth-select">
+      <option value="sub">Root Zone</option>
+      <option value="top">Surface</option>
+    </select>
+  </div>
+
+  <div class="control">
+    <label for="metric-select">Map</label>
+
+    <select id="metric-select">
+      <option value="percentile">
+        Mean Historical Percentile
+      </option>
+
+      <option value="dry">
+        Percent of County Dry
+      </option>
+
+      <option value="wet">
+        Percent of County Wet
+      </option>
+    </select>
+  </div>
+
+</div>
+
+<div id="layout">
+
+  <div id="map"></div>
+
+  <div id="panel">
+
+    <h2 id="county-title">
+      Select a county
+    </h2>
+
+    <div id="county-subtitle">
+      Click a county on the map to view its seasonal soil-moisture history.
+    </div>
+
+    <div id="summary"></div>
+
+    <div id="chart-controls">
+
+      <div class="control">
+        <label for="compare-select">
+          Compare year
+        </label>
+
+        <select id="compare-select">
+          <option value="">None</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="chart-start-select">
+          Chart start
+        </label>
+
+        <select id="chart-start-select"></select>
+      </div>
+
+      <div class="control">
+        <label for="chart-end-select">
+          Chart end
+        </label>
+
+        <select id="chart-end-select"></select>
+      </div>
+
+    </div>
+
+    <div id="chart-container">
+      <canvas id="soil-chart"></canvas>
+    </div>
+
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
+
+<script>
+
+const CURRENT_YEAR = 2026;
+
+const map = L.map("map").setView(
+  [39.5, -96.5],
+  5
+);
+
+L.tileLayer(
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {
+    attribution: "&copy; OpenStreetMap contributors",
+    maxZoom: 12
+  }
+).addTo(map);
+
+
+let latestInfo = null;
+let countyGeoJSON = null;
+let countyLayer = null;
+let weeklyData = null;
+
+let selectedFips = null;
+let selectedCountyData = null;
+
+let chart = null;
+
+
+const weekSelect =
+  document.getElementById("week-select");
+
+const depthSelect =
+  document.getElementById("depth-select");
+
+const metricSelect =
+  document.getElementById("metric-select");
+
+const compareSelect =
+  document.getElementById("compare-select");
+
+const chartStartSelect =
+  document.getElementById("chart-start-select");
+
+const chartEndSelect =
+  document.getElementById("chart-end-select");
+
+
+function isoWeekStart(year, week) {
+
+  const january4 =
+    new Date(
+      Date.UTC(
+        year,
+        0,
+        4
+      )
+    );
+
+  const january4Day =
+    january4.getUTCDay() || 7;
+
+  const mondayWeek1 =
+    new Date(january4);
+
+  mondayWeek1.setUTCDate(
+    january4.getUTCDate()
+    - january4Day
+    + 1
+  );
+
+  const result =
+    new Date(mondayWeek1);
+
+  result.setUTCDate(
+    mondayWeek1.getUTCDate()
+    + ((week - 1) * 7)
+  );
+
+  return result;
+}
+
+
+function isoWeekEnd(year, week) {
+
+  const start =
+    isoWeekStart(
+      year,
+      week
+    );
+
+  const end =
+    new Date(start);
+
+  end.setUTCDate(
+    start.getUTCDate() + 6
+  );
+
+  return end;
+}
+
+
+function shortDate(date) {
+
+  return date.toLocaleDateString(
+    "en-US",
+    {
+      timeZone: "UTC",
+      month: "short",
+      day: "numeric"
+    }
+  );
+}
+
+
+function weekDateRange(
+  year,
+  week
+) {
+
+  return (
+    `${shortDate(
+      isoWeekStart(year, week)
+    )}–${shortDate(
+      isoWeekEnd(year, week)
+    )}, ${year}`
+  );
+}
+
+
+function percentileColor(value) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "#d9d9d9";
+  }
+
+  if (value < 10) {
+    return "#a63603";
+  }
+
+  if (value < 25) {
+    return "#e6550d";
+  }
+
+  if (value < 75) {
+    return "#f7f7f7";
+  }
+
+  if (value < 90) {
+    return "#6baed6";
+  }
+
+  return "#08519c";
+}
+
+
+function dryColor(value) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "#d9d9d9";
+  }
+
+  if (value < 10) {
+    return "#fff5eb";
+  }
+
+  if (value < 25) {
+    return "#fdd0a2";
+  }
+
+  if (value < 50) {
+    return "#fdae6b";
+  }
+
+  if (value < 75) {
+    return "#e6550d";
+  }
+
+  return "#a63603";
+}
+
+
+function wetColor(value) {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "#d9d9d9";
+  }
+
+  if (value < 10) {
+    return "#f7fbff";
+  }
+
+  if (value < 25) {
+    return "#c6dbef";
+  }
+
+  if (value < 50) {
+    return "#6baed6";
+  }
+
+  if (value < 75) {
+    return "#2171b5";
+  }
+
+  return "#08519c";
+}
+
+
+function countyValue(fips) {
+
+  if (
+    !weeklyData ||
+    !weeklyData.counties[fips]
+  ) {
+    return null;
+  }
+
+  const row =
+    weeklyData.counties[fips];
+
+  const depth =
+    depthSelect.value;
+
+  const metric =
+    metricSelect.value;
+
+
+  if (depth === "top") {
+
+    if (metric === "percentile") {
+      return row.tp;
+    }
+
+    if (metric === "dry") {
+      return row.td;
+    }
+
+    if (metric === "wet") {
+      return row.tw;
+    }
+
+  } else {
+
+    if (metric === "percentile") {
+      return row.sp;
+    }
+
+    if (metric === "dry") {
+      return row.sd;
+    }
+
+    if (metric === "wet") {
+      return row.sw;
+    }
+  }
+
+  return null;
+}
+
+
+function styleCounty(feature) {
+
+  const fips =
+    feature.properties.GEOID;
+
+  const value =
+    countyValue(fips);
+
+  let fillColor;
+
+  if (
+    metricSelect.value ===
+    "percentile"
+  ) {
+    fillColor =
+      percentileColor(value);
+  }
+
+  else if (
+    metricSelect.value ===
+    "dry"
+  ) {
+    fillColor =
+      dryColor(value);
+  }
+
+  else {
+    fillColor =
+      wetColor(value);
+  }
+
+
+  const selected =
+    fips === selectedFips;
+
+
+  return {
+    color:
+      selected
+        ? "#111111"
+        : "#777777",
+
+    weight:
+      selected
+        ? 2.4
+        : 0.4,
+
+    fillColor:
+      fillColor,
+
+    fillOpacity:
+      0.82
+  };
+}
+
+
+function refreshMapStyle() {
+
+  if (countyLayer) {
+    countyLayer.setStyle(
+      styleCounty
+    );
+  }
+
+  updateLegend();
+}
+
+
+function updateLegend() {
+
+  const legend =
+    document.getElementById(
+      "legend"
+    );
+
+  if (!legend) {
+    return;
+  }
+
+
+  if (
+    metricSelect.value ===
+    "percentile"
+  ) {
+
+    legend.innerHTML = `
+
+      <strong>
+        Historical Percentile
+      </strong>
+
+      <div class="legend-row">
+        <span
+          class="legend-box"
+          style="background:#a63603"
+        ></span>
+        &lt;10 — Exceptionally dry
+      </div>
+
+      <div class="legend-row">
+        <span
+          class="legend-box"
+          style="background:#e6550d"
+        ></span>
+        10–25 — Dry
+      </div>
+
+      <div class="legend-row">
+        <span
+          class="legend-box"
+          style="background:#f7f7f7"
+        ></span>
+        25–75 — Near normal
+      </div>
+
+      <div class="legend-row">
+        <span
+          class="legend-box"
+          style="background:#6baed6"
+        ></span>
+        75–90 — Wet
+      </div>
+
+      <div class="legend-row">
+        <span
+          class="legend-box"
+          style="background:#08519c"
+        ></span>
+        &gt;90 — Exceptionally wet
+      </div>
+    `;
+
+    return;
+  }
+
+
+  const title =
+    metricSelect.value === "dry"
+      ? "County Area Dry"
+      : "County Area Wet";
+
+
+  legend.innerHTML = `
+    <strong>${title}</strong>
+    <div>Percent of county area</div>
+  `;
+}
+
+
+function populateWeekSelectors() {
+
+  weekSelect.innerHTML = "";
+  chartStartSelect.innerHTML = "";
+  chartEndSelect.innerHTML = "";
+
+
+  for (
+    let week = 1;
+    week <= 52;
+    week++
+  ) {
+
+    const label =
+      `Week ${week}`;
+
+
+    const startOption =
+      document.createElement(
+        "option"
+      );
+
+    startOption.value =
+      week;
+
+    startOption.textContent =
+      label;
+
+    if (week === 15) {
+      startOption.selected =
+        true;
+    }
+
+    chartStartSelect.appendChild(
+      startOption
+    );
+
+
+    const endOption =
+      document.createElement(
+        "option"
+      );
+
+    endOption.value =
+      week;
+
+    endOption.textContent =
+      label;
+
+    if (
+      week ===
+      latestInfo.latest_week
+    ) {
+      endOption.selected =
+        true;
+    }
+
+    chartEndSelect.appendChild(
+      endOption
+    );
+
+
+    if (
+      week <=
+      latestInfo.latest_week
+    ) {
+
+      const mapOption =
+        document.createElement(
+          "option"
+        );
+
+      mapOption.value =
+        week;
+
+      mapOption.textContent =
+        label;
+
+      if (
+        week ===
+        latestInfo.latest_week
+      ) {
+        mapOption.selected =
+          true;
+      }
+
+      weekSelect.appendChild(
+        mapOption
+      );
+    }
+  }
+}
+
+
+function populateComparisonYears() {
+
+  compareSelect.innerHTML =
+    `<option value="">None</option>`;
+
+
+  for (
+    const year of
+    latestInfo.comparison_years
+  ) {
+
+    const option =
+      document.createElement(
+        "option"
+      );
+
+    option.value =
+      year;
+
+    option.textContent =
+      year;
+
+    compareSelect.appendChild(
+      option
+    );
+  }
+}
+
+
+async function loadWeek(week) {
+
+  const path =
+    `data/${CURRENT_YEAR}/week_${String(
+      week
+    ).padStart(2, "0")}.json`;
+
+
+  weeklyData =
+    await fetch(path)
+      .then(
+        response =>
+          response.json()
+      );
+
+
+  refreshMapStyle();
+
+
+  if (selectedFips) {
+
+    updateCountySummary(
+      selectedFips
+    );
+  }
+}
+
+
+function findCountyProperties(
+  fips
+) {
+
+  const feature =
+    countyGeoJSON.features.find(
+      item =>
+        item.properties.GEOID ===
+        fips
+    );
+
+
+  return feature
+    ? feature.properties
+    : null;
+}
+
+
+function updateCountySummary(
+  fips
+) {
+
+  if (
+    !weeklyData ||
+    !weeklyData.counties[fips]
+  ) {
+    return;
+  }
+
+
+  const row =
+    weeklyData.counties[fips];
+
+
+  const props =
+    findCountyProperties(fips);
+
+
+  const depth =
+    depthSelect.value;
+
+
+  let percentile;
+  let dry;
+  let wet;
+  let moisture;
+  let departure;
+
+
+  if (depth === "top") {
+
+    percentile =
+      row.tp;
+
+    dry =
+      row.td;
+
+    wet =
+      row.tw;
+
+    moisture =
+      row.tm;
+
+    departure =
+      row.tdm;
+
+  } else {
+
+    percentile =
+      row.sp;
+
+    dry =
+      row.sd;
+
+    wet =
+      row.sw;
+
+    moisture =
+      row.sm;
+
+    departure =
+      row.sdm;
+  }
+
+
+  document.getElementById(
+    "county-title"
+  ).textContent =
+    props
+      ? `${props.NAME} County`
+      : fips;
+
+
+  document.getElementById(
+    "county-subtitle"
+  ).textContent =
+    `${
+      depth === "top"
+        ? "Surface"
+        : "Root Zone"
+    } Soil Moisture — ${CURRENT_YEAR}, Week ${weeklyData.week}`;
+
+
+  document.getElementById(
+    "summary"
+  ).innerHTML = `
+
+    <div class="summary-card">
+      <div class="summary-label">
+        Mean historical percentile
+      </div>
+      <div class="summary-value">
+        ${percentile ?? "—"}
+      </div>
+    </div>
+
+
+    <div class="summary-card">
+      <div class="summary-label">
+        Current moisture
+      </div>
+      <div class="summary-value">
+        ${moisture ?? "—"}
+      </div>
+    </div>
+
+
+    <div class="summary-card">
+      <div class="summary-label">
+        vs. historical median
+      </div>
+      <div class="summary-value">
+        ${departure ?? "—"}
+      </div>
+    </div>
+
+
+    <div class="summary-card">
+      <div class="summary-label">
+        Dry area ≤ P25
+      </div>
+      <div class="summary-value">
+        ${
+          dry === null
+            ? "—"
+            : `${dry}%`
+        }
+      </div>
+    </div>
+
+
+    <div class="summary-card">
+      <div class="summary-label">
+        Wet area ≥ P75
+      </div>
+      <div class="summary-value">
+        ${
+          wet === null
+            ? "—"
+            : `${wet}%`
+        }
+      </div>
+    </div>
+
+
+    <div class="summary-card">
+      <div class="summary-label">
+        Soil layer
+      </div>
+      <div class="summary-value">
+        ${
+          depth === "top"
+            ? "Surface"
+            : "Root Zone"
+        }
+      </div>
+    </div>
+  `;
+}
+
+
+/*
+  CONSOLIDATED PUBLIC DATA
+
+  One fetch now supplies:
+
+  - all historical years
+  - current year
+  - historical climatology
+
+  Example:
+  data/county_timeseries/18183.json
+*/
+
+async function loadCountyData(
+  fips
+) {
+
+  const path =
+    `data/county_timeseries/${fips}.json`;
+
+
+  selectedCountyData =
+    await fetch(path)
+      .then(
+        response =>
+          response.json()
+      );
+}
+
+
+async function selectCounty(
+  fips
+) {
+
+  selectedFips =
+    fips;
+
+
+  refreshMapStyle();
+
+
+  updateCountySummary(
+    fips
+  );
+
+
+  await loadCountyData(
+    fips
+  );
+
+
+  drawChart();
+}
+
+
+function seriesByWeek(
+  rows
+) {
+
+  const index =
+    new Map();
+
+
+  if (!rows) {
+    return index;
+  }
+
+
+  for (
+    const row of rows
+  ) {
+
+    index.set(
+      Number(row.w),
+      row
+    );
+  }
+
+
+  return index;
+}
+
+
+function drawChart() {
+
+  if (
+    !selectedCountyData
+  ) {
+    return;
+  }
+
+
+  const depth =
+    depthSelect.value;
+
+
+  let startWeek =
+    Number(
+      chartStartSelect.value
+    );
+
+
+  let endWeek =
+    Number(
+      chartEndSelect.value
+    );
+
+
+  if (
+    startWeek >
+    endWeek
+  ) {
+
+    const temporary =
+      startWeek;
+
+    startWeek =
+      endWeek;
+
+    endWeek =
+      temporary;
+  }
+
+
+  const labels = [];
+
+
+  for (
+    let week = startWeek;
+    week <= endWeek;
+    week++
+  ) {
+
+    labels.push(
+      week
+    );
+  }
+
+
+  const climateIndex =
+    seriesByWeek(
+      selectedCountyData.climatology
+    );
+
+
+  const currentRows =
+    selectedCountyData.years[
+      String(CURRENT_YEAR)
+    ] || [];
+
+
+  const currentIndex =
+    seriesByWeek(
+      currentRows
+    );
+
+
+  const compareYear =
+    compareSelect.value;
+
+
+  const comparisonRows =
+    compareYear
+      ? (
+          selectedCountyData.years[
+            String(compareYear)
+          ] || []
+        )
+      : [];
+
+
+  const comparisonIndex =
+    seriesByWeek(
+      comparisonRows
+    );
+
+
+  function climateValue(
+    week,
+    position
+  ) {
+
+    const row =
+      climateIndex.get(
+        week
+      );
+
+
+    if (!row) {
+      return null;
+    }
+
+
+    return row[
+      depth
+    ][
+      position
+    ];
+  }
+
+
+  function yearValue(
+    week,
+    dataIndex
+  ) {
+
+    const row =
+      dataIndex.get(
+        week
+      );
+
+
+    if (!row) {
+      return null;
+    }
+
+
+    return row[
+      depth
+    ][0];
+  }
+
+
+  const p10 =
+    labels.map(
+      week =>
+        climateValue(
+          week,
+          0
+        )
+    );
+
+
+  const p25 =
+    labels.map(
+      week =>
+        climateValue(
+          week,
+          1
+        )
+    );
+
+
+  const p50 =
+    labels.map(
+      week =>
+        climateValue(
+          week,
+          2
+        )
+    );
+
+
+  const p75 =
+    labels.map(
+      week =>
+        climateValue(
+          week,
+          3
+        )
+    );
+
+
+  const p90 =
+    labels.map(
+      week =>
+        climateValue(
+          week,
+          4
+        )
+    );
+
+
+  const current =
+    labels.map(
+      week =>
+        yearValue(
+          week,
+          currentIndex
+        )
+    );
+
+
+  const comparison =
+    labels.map(
+      week =>
+        yearValue(
+          week,
+          comparisonIndex
+        )
+    );
+
+
+  const datasets = [
+
+    {
+      label:
+        "P10 boundary",
+
+      data:
+        p10,
+
+      borderColor:
+        "rgba(230,85,13,0.75)",
+
+      backgroundColor:
+        "rgba(253,174,107,0.28)",
+
+      pointRadius:
+        0,
+
+      borderWidth:
+        1,
+
+      fill:
+        false
+    },
+
+
+    {
+      label:
+        "P10–P25 Dry range",
+
+      data:
+        p25,
+
+      borderColor:
+        "rgba(230,85,13,0.60)",
+
+      backgroundColor:
+        "rgba(253,174,107,0.28)",
+
+      pointRadius:
+        0,
+
+      borderWidth:
+        1,
+
+      fill:
+        "-1"
+    },
+
+
+    {
+      label:
+        "P25–P75 Typical range",
+
+      data:
+        p75,
+
+      borderColor:
+        "rgba(150,150,150,0.65)",
+
+      backgroundColor:
+        "rgba(185,185,185,0.22)",
+
+      pointRadius:
+        0,
+
+      borderWidth:
+        1,
+
+      fill:
+        "-1"
+    },
+
+
+    {
+      label:
+        "P75–P90 Wet range",
+
+      data:
+        p90,
+
+      borderColor:
+        "rgba(33,113,181,0.75)",
+
+      backgroundColor:
+        "rgba(107,174,214,0.25)",
+
+      pointRadius:
+        0,
+
+      borderWidth:
+        1,
+
+      fill:
+        "-1"
+    },
+
+
+    {
+      label:
+        "Historical Median (P50)",
+
+      data:
+        p50,
+
+      borderColor:
+        "#666666",
+
+      backgroundColor:
+        "transparent",
+
+      pointRadius:
+        0,
+
+      borderWidth:
+        2,
+
+      borderDash:
+        [6,5],
+
+      fill:
+        false
+    },
+
+
+    {
+      label:
+        `${CURRENT_YEAR} Soil Moisture`,
+
+      data:
+        current,
+
+      borderColor:
+        "#111111",
+
+      backgroundColor:
+        "#111111",
+
+      pointRadius:
+        3,
+
+      borderWidth:
+        3,
+
+      tension:
+        0.15,
+
+      spanGaps:
+        false
+    }
+  ];
+
+
+  if (
+    compareYear
+  ) {
+
+    datasets.push(
+      {
+
+        label:
+          `${compareYear} Soil Moisture`,
+
+        data:
+          comparison,
+
+        borderColor:
+          "#7a3db8",
+
+        backgroundColor:
+          "#7a3db8",
+
+        pointRadius:
+          2,
+
+        borderWidth:
+          2,
+
+        borderDash:
+          [4,3],
+
+        tension:
+          0.15,
+
+        spanGaps:
+          false
+      }
+    );
+  }
+
+
+  if (
+    chart
+  ) {
+
+    chart.destroy();
+  }
+
+
+  chart =
+    new Chart(
+      document.getElementById(
+        "soil-chart"
+      ),
+      {
+
+        type:
+          "line",
+
+
+        data: {
+
+          labels:
+            labels,
+
+          datasets:
+            datasets
+        },
+
+
+        options: {
+
+          responsive:
+            true,
+
+          maintainAspectRatio:
+            false,
+
+
+          interaction: {
+
+            intersect:
+              false,
+
+            mode:
+              "index"
+          },
+
+
+          plugins: {
+
+            title: {
+
+              display:
+                true,
+
+              text:
+                depth === "top"
+                  ? "Seasonal Surface Soil Moisture"
+                  : "Seasonal Root-Zone Soil Moisture"
+            },
+
+
+            tooltip: {
+
+              callbacks: {
+
+                title:
+                  function(items) {
+
+                    if (
+                      !items ||
+                      items.length === 0
+                    ) {
+                      return "";
+                    }
+
+
+                    const week =
+                      Number(
+                        items[0].label
+                      );
+
+
+                    return (
+                      `Week ${week} — ` +
+                      weekDateRange(
+                        CURRENT_YEAR,
+                        week
+                      )
+                    );
+                  }
+              }
+            },
+
+
+            legend: {
+
+              position:
+                "bottom",
+
+
+              labels: {
+
+                generateLabels:
+                  function() {
+
+                    const items = [
+
+                      {
+                        text:
+                          "P10–P25 Dry range",
+
+                        fillStyle:
+                          "rgba(253,174,107,0.28)",
+
+                        strokeStyle:
+                          "rgba(230,85,13,0.75)",
+
+                        lineWidth:
+                          1,
+
+                        hidden:
+                          false,
+
+                        datasetIndex:
+                          1
+                      },
+
+
+                      {
+                        text:
+                          "P25–P75 Typical range",
+
+                        fillStyle:
+                          "rgba(185,185,185,0.22)",
+
+                        strokeStyle:
+                          "rgba(150,150,150,0.65)",
+
+                        lineWidth:
+                          1,
+
+                        hidden:
+                          false,
+
+                        datasetIndex:
+                          2
+                      },
+
+
+                      {
+                        text:
+                          "P75–P90 Wet range",
+
+                        fillStyle:
+                          "rgba(107,174,214,0.25)",
+
+                        strokeStyle:
+                          "rgba(33,113,181,0.75)",
+
+                        lineWidth:
+                          1,
+
+                        hidden:
+                          false,
+
+                        datasetIndex:
+                          3
+                      },
+
+
+                      {
+                        text:
+                          "Historical Median (P50)",
+
+                        fillStyle:
+                          "transparent",
+
+                        strokeStyle:
+                          "#666666",
+
+                        lineWidth:
+                          2,
+
+                        lineDash:
+                          [6,5],
+
+                        hidden:
+                          false,
+
+                        datasetIndex:
+                          4
+                      },
+
+
+                      {
+                        text:
+                          `${CURRENT_YEAR} Soil Moisture`,
+
+                        fillStyle:
+                          "#111111",
+
+                        strokeStyle:
+                          "#111111",
+
+                        lineWidth:
+                          3,
+
+                        hidden:
+                          false,
+
+                        datasetIndex:
+                          5
+                      }
+                    ];
+
+
+                    if (
+                      compareYear
+                    ) {
+
+                      items.push(
+                        {
+
+                          text:
+                            `${compareYear} Soil Moisture`,
+
+                          fillStyle:
+                            "#7a3db8",
+
+                          strokeStyle:
+                            "#7a3db8",
+
+                          lineWidth:
+                            2,
+
+                          lineDash:
+                            [4,3],
+
+                          hidden:
+                            false,
+
+                          datasetIndex:
+                            6
+                        }
+                      );
+                    }
+
+
+                    return items;
+                  }
+              },
+
+
+              onClick:
+                function() {
+                }
+            }
+          },
+
+
+          scales: {
+
+            x: {
+
+              title: {
+
+                display:
+                  true,
+
+                text:
+                  "ISO Week / 2026 Calendar Date"
+              },
+
+
+              ticks: {
+
+                autoSkip:
+                  false,
+
+                maxRotation:
+                  0,
+
+
+                callback:
+                  function(
+                    value,
+                    index
+                  ) {
+
+                    const week =
+                      Number(
+                        labels[index]
+                      );
+
+
+                    const show =
+                      index === 0 ||
+                      index === labels.length - 1 ||
+                      (
+                        (week - startWeek)
+                        % 2 === 0
+                      );
+
+
+                    if (!show) {
+                      return "";
+                    }
+
+
+                    return [
+
+                      `W${week}`,
+
+                      shortDate(
+                        isoWeekStart(
+                          CURRENT_YEAR,
+                          week
+                        )
+                      )
+                    ];
+                  }
+              }
+            },
+
+
+            y: {
+
+              title: {
+
+                display:
+                  true,
+
+                text:
+                  "Volumetric Soil Moisture"
+              }
+            }
+          }
+        }
+      }
+    );
+}
+
+
+function refreshComparison() {
+
+  if (
+    selectedCountyData
+  ) {
+
+    drawChart();
+  }
+}
+
+
+async function initialize() {
+
+  latestInfo =
+    await fetch(
+      "data/latest.json"
+    ).then(
+      response =>
+        response.json()
+    );
+
+
+  populateWeekSelectors();
+
+  populateComparisonYears();
+
+
+  countyGeoJSON =
+    await fetch(
+      "data/counties.geojson"
+    ).then(
+      response =>
+        response.json()
+    );
+
+
+  await loadWeek(
+    latestInfo.latest_week
+  );
+
+
+  countyLayer =
+    L.geoJSON(
+      countyGeoJSON,
+      {
+
+        style:
+          styleCounty,
+
+
+        onEachFeature:
+          function(
+            feature,
+            layer
+          ) {
+
+            layer.bindTooltip(
+              `${feature.properties.NAME} County`,
+              {
+                sticky:
+                  true
+              }
+            );
+
+
+            layer.on({
+
+              mouseover:
+                function(
+                  event
+                ) {
+
+                  if (
+                    feature.properties.GEOID
+                    !==
+                    selectedFips
+                  ) {
+
+                    event.target.setStyle(
+                      {
+
+                        weight:
+                          1.6,
+
+                        color:
+                          "#222222"
+                      }
+                    );
+                  }
+                },
+
+
+              mouseout:
+                function(
+                  event
+                ) {
+
+                  countyLayer.resetStyle(
+                    event.target
+                  );
+                },
+
+
+              click:
+                function() {
+
+                  selectCounty(
+                    feature.properties.GEOID
+                  );
+                }
+
+            });
+          }
+      }
+    ).addTo(map);
+
+
+  const legend =
+    L.control(
+      {
+        position:
+          "bottomleft"
+      }
+    );
+
+
+  legend.onAdd =
+    function() {
+
+      const div =
+        L.DomUtil.create(
+          "div",
+          ""
+        );
+
+
+      div.id =
+        "legend";
+
+
+      return div;
+    };
+
+
+  legend.addTo(
+    map
+  );
+
+
+  updateLegend();
+
+
+  setTimeout(
+    () =>
+      map.invalidateSize(),
+    100
+  );
+}
+
+
+weekSelect.addEventListener(
+  "change",
+  async function() {
+
+    await loadWeek(
+      Number(
+        weekSelect.value
+      )
+    );
+  }
+);
+
+
+depthSelect.addEventListener(
+  "change",
+  function() {
+
+    refreshMapStyle();
+
+
+    if (
+      selectedFips
+    ) {
+
+      updateCountySummary(
+        selectedFips
+      );
+
+
+      drawChart();
+    }
+  }
+);
+
+
+metricSelect.addEventListener(
+  "change",
+  refreshMapStyle
+);
+
+
+compareSelect.addEventListener(
+  "change",
+  refreshComparison
+);
+
+
+chartStartSelect.addEventListener(
+  "change",
+  drawChart
+);
+
+
+chartEndSelect.addEventListener(
+  "change",
+  drawChart
+);
+
+
+window.addEventListener(
+  "resize",
+  function() {
+
+    map.invalidateSize();
+  }
+);
+
+
+initialize();
+
+</script>
+
+</body>
+</html>
